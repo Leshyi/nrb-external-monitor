@@ -11,13 +11,42 @@ permissions:
 
 jobs:
   ping:
-    name: Check public IP
+    name: Check public NTP
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Check public IP
+      - name: Check NTP service
         run: python3 check_ip.py
 
+      - name: Send test email
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+        run: |
+          python3 - <<'PY'
+          import os
+          import smtplib
+          from email.message import EmailMessage
+
+          msg = EmailMessage()
+          msg["Subject"] = "NRB Monitor - Test notification"
+          msg["From"] = os.environ["SMTP_USER"]
+          msg["To"] = "leshyi26@mail.ru"
+          msg.set_content(
+              "Test email from NRB External NTP Monitor.\n"
+              "SMTP configuration is working."
+          )
+
+          with smtplib.SMTP_SSL("smtp.mail.ru", 465, timeout=20) as smtp:
+              smtp.login(
+                  os.environ["SMTP_USER"],
+                  os.environ["SMTP_PASS"]
+              )
+              smtp.send_message(msg)
+
+          print("TEST EMAIL SENT")
+          PY
