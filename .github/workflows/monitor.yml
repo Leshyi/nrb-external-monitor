@@ -1,5 +1,5 @@
 
-name: NRB External IP Monitor
+name: NRB External NTP Monitor
 
 on:
   schedule:
@@ -7,46 +7,37 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
+
+concurrency:
+  group: nrb-external-ntp-monitor
+  cancel-in-progress: false
 
 jobs:
-  ping:
-    name: Check public NTP
+  monitor:
+    name: Check NTP and notify
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          ref: main
 
-      - name: Check NTP service
-        run: python3 check_ip.py
-
-      - name: Send test email
-        if: github.event_name == 'workflow_dispatch'
+      - name: Check NTP and send notifications
         env:
           SMTP_USER: ${{ secrets.SMTP_USER }}
           SMTP_PASS: ${{ secrets.SMTP_PASS }}
+        run: python3 check_ip.py
+
+      - name: Save monitoring state
         run: |
-          python3 - <<'PY'
-          import os
-          import smtplib
-          from email.message import EmailMessage
-
-          msg = EmailMessage()
-          msg["Subject"] = "NRB Monitor - Test notification"
-          msg["From"] = os.environ["SMTP_USER"]
-          msg["To"] = "leshyi26@mail.ru"
-          msg.set_content(
-              "Test email from NRB External NTP Monitor.\n"
-              "SMTP configuration is working."
-          )
-
-          with smtplib.SMTP_SSL("smtp.mail.ru", 465, timeout=20) as smtp:
-              smtp.login(
-                  os.environ["SMTP_USER"],
-                  os.environ["SMTP_PASS"]
-              )
-              smtp.send_message(msg)
-
-          print("TEST EMAIL SENT")
-          PY
+          if [ -f state.json ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add state.json
+            if ! git diff --cached --quiet; then
+              git commit -m "Update NTP monitoring state"
+              git push origin HEAD:main
+            fi
+          fi
